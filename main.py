@@ -3,7 +3,7 @@ import logging
 import json
 import os
 
-API_TOKEN = '7881497035:AAGCcHm8VGo45VDks8y_tgf1ENehrlHYfjo'
+API_TOKEN = '6820687034:AAGQZZdavImQEkbyi6B5SvH1zyW0Bw3y1g8'
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
