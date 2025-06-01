@@ -1,71 +1,116 @@
 from aiogram import types
-from main import dp, bot, ADMIN_ID
+from main import dp, bot, MOVIES_FILE, USERS_FILE, CHANNEL_USERNAME
 import json
 import os
 
-# Faylda saqlanadigan kinolar va foydalanuvchilar
-MOVIES_FILE = "movies.json"
-USERS_FILE = "users.json"
+# Admin ID (o'zingizning Telegram ID raqamingiz)
+ADMIN_ID = 6359279097  # @InomovB uchun
 
-# Yordamchi funksiyalar
-def load_movies():
-    if not os.path.exists(MOVIES_FILE):
-        return {}
-    with open(MOVIES_FILE, "r") as f:
-        return json.load(f)
+# Kino yuklash va kod berish
+@dp.message_handler(content_types=['video'], user_id=ADMIN_ID)
+async def add_movie(message: types.Message):
+    await message.answer("🎬 Kino yuklandi.\nIltimos, ushbu kino uchun kod yuboring:")
 
-def save_movies(movies):
-    with open(MOVIES_FILE, "w") as f:
-        json.dump(movies, f)
+    # Kino fayl ID sini vaqtincha saqlaymiz
+    with open("temp_video.txt", "w") as f:
+        f.write(message.video.file_id)
 
-def load_users():
-    if not os.path.exists(USERS_FILE):
-        return []
-    with open(USERS_FILE, "r") as f:
-        return json.load(f)
+@dp.message_handler(lambda msg: msg.text.isdigit(), user_id=ADMIN_ID)
+async def save_code(message: types.Message):
+    if os.path.exists("temp_video.txt"):
+        with open("temp_video.txt", "r") as f:
+            file_id = f.read()
 
-def save_users(users):
-    with open(USERS_FILE, "w") as f:
-        json.dump(users, f)
+        code = message.text.strip()
 
-# Kino qo‘shish
-@dp.message_handler(lambda msg: msg.from_user.id == ADMIN_ID and msg.text.startswith("/add "))
-async def add_movie(msg: types.Message):
-    code = msg.text.split(" ")[1]
-    if not msg.reply_to_message or not msg.reply_to_message.video:
-        await msg.reply("❌ Kino yuklash uchun videoga reply qilib yozing: /add <kod>")
-        return
-    file_id = msg.reply_to_message.video.file_id
-    movies = load_movies()
-    movies[code] = file_id
-    save_movies(movies)
-    await msg.reply(f"✅ Kino kod {code} bilan saqlandi!")
+        # Kino faylini bazaga yozish
+        if os.path.exists(MOVIES_FILE):
+            with open(MOVIES_FILE, "r") as f:
+                movies = json.load(f)
+        else:
+            movies = {}
+
+        movies[code] = file_id
+
+        with open(MOVIES_FILE, "w") as f:
+            json.dump(movies, f)
+
+        await message.answer(f"✅ Kino {code}-kod bilan saqlandi.")
+        os.remove("temp_video.txt")
+    else:
+        await message.answer("⚠ Avval kino yuboring!")
 
 # Statistika
-@dp.message_handler(lambda msg: msg.from_user.id == ADMIN_ID and msg.text == "/stats")
-async def stats(msg: types.Message):
-    users = load_users()
-    await msg.reply(f"👥 Umumiy foydalanuvchilar: {len(users)}")
+@dp.message_handler(commands=["stat"], user_id=ADMIN_ID)
+async def show_stats(message: types.Message):
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r") as f:
+            users = json.load(f)
+        total = len(users)
+    else:
+        total = 0
+    await message.answer(f"📊 Foydalanuvchilar soni: {total} ta")
 
-# Xabar yuborish
-@dp.message_handler(lambda msg: msg.from_user.id == ADMIN_ID and msg.text.startswith("/send "))
-async def broadcast(msg: types.Message):
-    text = msg.text.split(" ", 1)[1]
-    users = load_users()
-    success = 0
-    for user_id in users:
+# Obunachilar ro'yxati
+@dp.message_handler(commands=["users"], user_id=ADMIN_ID)
+async def list_users(message: types.Message):
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r") as f:
+            users = json.load(f)
+        txt = "\n".join([str(u) for u in users])
+        await message.answer(f"📄 Foydalanuvchilar:\n{txt}")
+    else:
+        await message.answer("Foydalanuvchilar yo‘q")
+
+# Xabar yuborish (broadcast)
+@dp.message_handler(commands=["send"], user_id=ADMIN_ID)
+async def broadcast(message: types.Message):
+    msg = message.text.split(" ", 1)
+    if len(msg) < 2:
+        await message.answer("✍ /send [xabar] shaklida yozing")
+        return
+    text = msg[1]
+
+    with open(USERS_FILE, "r") as f:
+        users = json.load(f)
+
+    count = 0
+    for user in users:
         try:
-            await bot.send_message(user_id, text)
-            success += 1
+            await bot.send_message(user, text)
+            count += 1
         except:
-            pass
-    await msg.reply(f"📨 {success} foydalanuvchiga yuborildi.")
+            continue
+    await message.answer(f"📤 {count} ta foydalanuvchiga yuborildi")
 
-# Foydalanuvchilarni avtomatik ro‘yxatga olish
-@dp.message_handler()
-async def register_users(msg: types.Message):
-    users = load_users()
-    if msg.from_user.id not in users:
-        users.append(msg.from_user.id)
-        save_users(users)
-      
+# User ID orqali topish
+@dp.message_handler(commands=["find"], user_id=ADMIN_ID)
+async def find_user(message: types.Message):
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer("🔍 /find [user_id] deb yozing")
+        return
+    uid = int(args[1])
+
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r") as f:
+            users = json.load(f)
+    else:
+        users = []
+
+    if uid in users:
+        await message.answer(f"✅ {uid} botdan foydalanmoqda.")
+    else:
+        await message.answer(f"❌ {uid} topilmadi.")
+
+# Kanalni yangilash
+@dp.message_handler(commands=["setchannel"], user_id=ADMIN_ID)
+async def set_channel(message: types.Message):
+    global CHANNEL_USERNAME
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer("ℹ Foydalanish: /setchannel @kanal_nomi")
+        return
+    CHANNEL_USERNAME = args[1]
+    await message.answer(f"✅ Kanal yangilandi: {CHANNEL_USERNAME}")
+    
