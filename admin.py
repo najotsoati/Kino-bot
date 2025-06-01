@@ -4,7 +4,7 @@ import json
 import os
 
 # Admin ID (o'zingizning Telegram ID raqamingiz)
-ADMIN_ID = 6359279097  # @InomovB uchun
+ADMIN_ID = 1556307772  # @InomovB uchun
 
 # Kino yuklash va kod berish
 @dp.message_handler(content_types=['video'], user_id=ADMIN_ID)
